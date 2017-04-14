@@ -23,7 +23,7 @@ For more background, read the Test Butler announcement [blog post](https://engin
 
 ## How does it work?
 
-Test Butler is a two-part project. It includes an Android library that your test code can depend on, as well as a companion Android app apk that is installed on your Android emulator before running tests.
+Test Butler is a two-part project. It includes an Android library that your test code can depend on, as well as a companion Android app apk that must be installed on your Android emulator before using Test Butler.  You can build the Test Butler APK yourself from source, or download the binary from [Bintray](https://bintray.com/linkedin/maven/test-butler-app/)
 
 The Test Butler library is a thin wrapper around an [AIDL interface](https://developer.android.com/guide/components/aidl.html) to give your tests a safe way to talk to the Test Butler app's service running in the background on the emulator.
 
@@ -48,20 +48,20 @@ Download the latest .apk and .aar via Maven:
     <dependency>
       <groupId>com.linkedin.testbutler</groupId>
       <artifactId>test-butler-library</artifactId>
-      <version>1.2.0</version>
+      <version>1.3.0</version>
       <type>pom</type>
     </dependency>
     <dependency>
       <groupId>com.linkedin.testbutler</groupId>
       <artifactId>test-butler-app</artifactId>
-      <version>1.2.0</version>
+      <version>1.3.0</version>
       <type>pom</type>
     </dependency>
 ```
 
 or Gradle:
 ```
-    androidTestCompile 'com.linkedin.testbutler:test-butler-library:1.2.0'
+    androidTestCompile 'com.linkedin.testbutler:test-butler-library:1.3.0'
 ```
 
 You can also download the apk file manually from [Bintray](https://bintray.com/linkedin/maven/test-butler-app/) if you prefer.

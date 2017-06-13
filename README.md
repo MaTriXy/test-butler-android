@@ -14,12 +14,15 @@ For more background, read the Test Butler announcement [blog post](https://engin
   * **Disables animations** so Espresso tests can run properly.
   * **Disables crash & ANR dialogs** so a system app misbehaving won't trigger a popup that causes your UI tests to fail.
   * **Locks the keyguard, WiFi radio, and CPU** to ensure they don't go to sleep unexpectedly while tests are running.
+  * **Disables system spell checker** to avoid redline highlights and text auto correction.
 * Handles changing global emulator settings and holds relevant permissions so your app doesn't have to.
   * **Enable/disable WiFi:** Test Butler allows tests to simulate a situation where WiFi is not connected or changes availability at some point.
   * **Change device orientation:** Tests can manually set the orientation of the device during test execution.
   * **Set location services mode:** Test Butler lets your code simulate different location services modes, like battery saver or high accuracy.
   * **Set application locale:** Tests can set a custom `Locale` object for their application to simulate running the app in another language.
   * **Grant runtime permissions:** Tests can grant Marshmallow's runtime permissions to their application directly from test code.
+  * **Use hardware IME:** Tests can tell the system to prefer the hardware IME.
+  * **Control immersive mode confirmation:** Tests can enable or disable immersive mode confirmation.
 
 ## How does it work?
 
@@ -48,20 +51,20 @@ Download the latest .apk and .aar via Maven:
     <dependency>
       <groupId>com.linkedin.testbutler</groupId>
       <artifactId>test-butler-library</artifactId>
-      <version>1.3.0</version>
+      <version>1.3.1</version>
       <type>pom</type>
     </dependency>
     <dependency>
       <groupId>com.linkedin.testbutler</groupId>
       <artifactId>test-butler-app</artifactId>
-      <version>1.3.0</version>
+      <version>1.3.1</version>
       <type>pom</type>
     </dependency>
 ```
 
 or Gradle:
 ```
-    androidTestCompile 'com.linkedin.testbutler:test-butler-library:1.3.0'
+    androidTestCompile 'com.linkedin.testbutler:test-butler-library:1.3.1'
 ```
 
 You can also download the apk file manually from [Bintray](https://bintray.com/linkedin/maven/test-butler-app/) if you prefer.
@@ -91,7 +94,7 @@ To change settings on the device from your tests, just use the methods in the `T
 
 ```java
 @Before
-public static void setupClass() {
+public void setup() {
   TestButler.setLocationMode(Settings.Secure.LOCATION_MODE_OFF);
 }
 
@@ -101,7 +104,8 @@ public void verifyBehaviorWithNoLocation() {
 }
 
 @After
-public static void teardownClass() {
+public void teardown() {
   TestButler.setLocationMode(Settings.Secure.LOCATION_MODE_HIGH_ACCURACY);
 }
 ```
+NB: See [gotchyas](#any-gotchas-to-look-out-for) above to see why `@BeforeClass` & `@AfterClass` aren't used here. 

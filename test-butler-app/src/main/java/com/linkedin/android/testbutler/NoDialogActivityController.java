@@ -20,6 +20,7 @@ import android.content.Intent;
 import android.os.RemoteException;
 import android.support.annotation.Nullable;
 import android.util.Log;
+import android.os.Build;
 
 import java.lang.reflect.Method;
 
@@ -43,6 +44,8 @@ import java.lang.reflect.Method;
  */
 class NoDialogActivityController extends IActivityController.Stub {
     private static final String TAG = NoDialogActivityController.class.getSimpleName();
+
+    private static final int BUILD_VERSION_CODES_O = 26 ;
 
     @Override
     public boolean activityStarting(Intent intent, String pkg) throws RemoteException {
@@ -108,13 +111,43 @@ class NoDialogActivityController extends IActivityController.Stub {
      */
     private static void setActivityController(@Nullable IActivityController activityController) {
         try {
-            Class<?> amClass = Class.forName("android.app.ActivityManagerNative");
-            Method getDefault = amClass.getMethod("getDefault");
-            Object am = getDefault.invoke(null);
-            Method setMethod = am.getClass().getMethod("setActivityController", IActivityController.class);
-            setMethod.invoke(am, activityController);
+            //on Android O, ActivityManagerNative.getDefault() method will be removed soon,
+            //should use ActivityManager.getService instead.
+            Object am;
+            if (Build.VERSION.SDK_INT >= BUILD_VERSION_CODES_O) {
+                Class<?> amClass = Class.forName("android.app.ActivityManager");
+                Method getService = amClass.getMethod("getService");
+                am = getService.invoke(null);
+            } else{
+                Class<?> amClass = Class.forName("android.app.ActivityManagerNative");
+                Method getDefault = amClass.getMethod("getDefault");
+                am = getDefault.invoke(null);
+            }
+            // attempt to set the activity controller
+            attemptSetController(am, activityController);
         } catch (Throwable e) {
             Log.e(TAG, "Failed to install custom IActivityController: " + e.getMessage(), e);
+        }
+    }
+
+    /**
+     * Attempts to set the activity controller
+     *
+     * On newer versions of Android, there is an extra parameter in setActivityController to
+     * identify if we're in monkey testing mode. See this commit:
+     * https://android.googlesource.com/platform/frameworks/base/+/4a18c26609df2c4230885acb64e92fb51aba70df%5E%21/#F0
+     *
+     * @throws Throwable if the activity controller cannot be set
+     */
+    private static void attemptSetController(final Object am, @Nullable IActivityController activityController) throws Throwable {
+        Method setMethod;
+        try {
+            setMethod = am.getClass().getMethod("setActivityController", IActivityController.class);
+            setMethod.invoke(am, activityController);
+        } catch (Throwable e) {
+            setMethod = am.getClass().getMethod("setActivityController", IActivityController.class, boolean.class);
+            final Object[] params = {activityController, false};
+            setMethod.invoke(am, params);
         }
     }
 }

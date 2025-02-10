@@ -15,15 +15,20 @@
  */
 package com.linkedin.android.testbutler;
 
-import android.app.KeyguardManager;
+import android.accessibilityservice.AccessibilityServiceInfo;
 import android.app.Service;
 import android.content.Intent;
 import android.net.wifi.WifiManager;
 import android.os.IBinder;
-import android.os.PowerManager;
 import android.os.RemoteException;
-import android.support.annotation.Nullable;
 import android.util.Log;
+import android.view.accessibility.AccessibilityManager;
+
+import androidx.annotation.NonNull;
+import androidx.annotation.Nullable;
+
+import java.util.Collections;
+import java.util.List;
 
 /**
  * Main entry point into the Test Butler application.
@@ -37,20 +42,13 @@ public class ButlerService extends Service {
 
     private static final String TAG = ButlerService.class.getSimpleName();
 
-    private AnimationDisabler animationDisabler;
-    private RotationChanger rotationChanger;
-    private LocationServicesChanger locationServicesChanger;
     private GsmDataDisabler gsmDataDisabler;
     private PermissionGranter permissionGranter;
-    private SpellCheckerDisabler spellCheckerDisabler;
-    private ShowImeWithHardKeyboardHelper showImeWithHardKeyboardHelper;
-    private ImmersiveModeConfirmationDisabler immersiveModeDialogDisabler;
+    private CommonDeviceLocks locks;
+    private AccessibilityServiceEnabler accessibilityServiceEnabler;
+    private AccessibilityServiceWaiter accessibilityServiceWaiter;
 
-    private WifiManager.WifiLock wifiLock;
-    private PowerManager.WakeLock wakeLock;
-    private KeyguardManager.KeyguardLock keyguardLock;
-
-    private final ButlerApi.Stub butlerApi = new ButlerApi.Stub() {
+    private ButlerApiStubBase butlerApi = new ButlerApiStubBase() {
         @Override
         public boolean setWifiState(boolean enabled) throws RemoteException {
             WifiManager wifiManager = (WifiManager) getApplicationContext().getSystemService(WIFI_SERVICE);
@@ -63,33 +61,17 @@ public class ButlerService extends Service {
         }
 
         @Override
-        public boolean setLocationMode(int locationMode) throws RemoteException {
-            return locationServicesChanger.setLocationServicesState(getContentResolver(), locationMode);
-        }
-
-        @Override
-        public boolean setRotation(int rotation) throws RemoteException {
-            return rotationChanger.setRotation(getContentResolver(), rotation);
-        }
-
-        @Override
         public boolean grantPermission(String packageName, String permission) throws RemoteException {
             return permissionGranter.grantPermission(ButlerService.this, packageName, permission);
         }
 
         @Override
-        public boolean setSpellCheckerState(boolean enabled) {
-            return spellCheckerDisabler.setSpellChecker(getContentResolver(), enabled);
-        }
-
-        @Override
-        public boolean setShowImeWithHardKeyboardState(boolean enabled) {
-            return showImeWithHardKeyboardHelper.setShowImeWithHardKeyboardState(getContentResolver(), enabled);
-        }
-
-        @Override
-        public boolean setImmersiveModeConfirmation(boolean enabled) throws RemoteException {
-            return immersiveModeDialogDisabler.setState(enabled);
+        public boolean setAccessibilityServiceState(boolean enabled) throws RemoteException {
+            boolean successful = accessibilityServiceEnabler.setAccessibilityServiceEnabled(enabled);
+            if (successful) {
+                accessibilityServiceWaiter.waitForAccessibilityService(enabled);
+            }
+            return successful;
         }
     };
 
@@ -99,49 +81,28 @@ public class ButlerService extends Service {
 
         Log.d(TAG, "ButlerService starting up...");
 
-        // Save current device rotation so we can restore it after tests complete
-        rotationChanger = new RotationChanger();
-        rotationChanger.saveRotationState(getContentResolver());
-
-        // Save current location services setting so we can restore it after tests complete
-        locationServicesChanger = new LocationServicesChanger();
-        locationServicesChanger.saveLocationServicesState(getContentResolver());
-
-        // Disable animations on the device so tests can run reliably
-        animationDisabler = new AnimationDisabler();
-        animationDisabler.disableAnimations();
-
-        // Acquire a WifiLock to prevent wifi from turning off and breaking tests
-        // NOTE: holding a WifiLock does NOT override a call to setWifiEnabled(false)
-        WifiManager wifiManager = (WifiManager) getApplicationContext().getSystemService(WIFI_SERVICE);
-        wifiLock = wifiManager.createWifiLock(WifiManager.WIFI_MODE_FULL, "ButlerWifiLock");
-        wifiLock.acquire();
-
-        // Acquire a keyguard lock to prevent the lock screen from randomly appearing and breaking tests
-        KeyguardManager keyguardManager = (KeyguardManager) getSystemService(KEYGUARD_SERVICE);
-        keyguardLock = keyguardManager.newKeyguardLock("ButlerKeyguardLock");
-        keyguardLock.disableKeyguard();
-
-        // Acquire a wake lock to prevent the cpu from going to sleep and breaking tests
-        PowerManager powerManager = (PowerManager) getSystemService(POWER_SERVICE);
-        wakeLock = powerManager.newWakeLock(PowerManager.FULL_WAKE_LOCK
-                | PowerManager.ACQUIRE_CAUSES_WAKEUP
-                | PowerManager.ON_AFTER_RELEASE, "ButlerWakeLock");
-        wakeLock.acquire();
+        AppSettingsAccessor settings = new AppSettingsAccessor(getContentResolver());
 
         gsmDataDisabler = new GsmDataDisabler();
         permissionGranter = new PermissionGranter();
+        InstalledAccessibilityServiceProvider serviceProvider = new InstalledAccessibilityServiceProvider() {
+            @NonNull
+            @Override
+            public List<AccessibilityServiceInfo> getInstalledAccessibilityServiceList() {
+                AccessibilityManager manager = (AccessibilityManager) getApplicationContext()
+                        .getSystemService(ACCESSIBILITY_SERVICE);
+                if (manager == null) {
+                    return Collections.emptyList();
+                }
+                return manager.getInstalledAccessibilityServiceList();
+            }
+        };
+        accessibilityServiceEnabler = new AccessibilityServiceEnabler(serviceProvider, settings);
+        accessibilityServiceWaiter = new AccessibilityServiceWaiter();
+        locks = new CommonDeviceLocks();
+        locks.acquire(this);
 
-        spellCheckerDisabler = new SpellCheckerDisabler();
-        spellCheckerDisabler.saveSpellCheckerState(getContentResolver());
-        // Disable spell checker by default
-        spellCheckerDisabler.setSpellChecker(getContentResolver(), false);
-
-        showImeWithHardKeyboardHelper = new ShowImeWithHardKeyboardHelper();
-        showImeWithHardKeyboardHelper.saveShowImeState(getContentResolver());
-        showImeWithHardKeyboardHelper.setShowImeWithHardKeyboardState(getContentResolver(), false);
-
-        immersiveModeDialogDisabler = new ImmersiveModeConfirmationDisabler(getContentResolver());
+        butlerApi.onCreate(settings);
 
         // Install custom IActivityController to prevent system dialogs from appearing if apps crash or ANR
         NoDialogActivityController.install();
@@ -153,31 +114,16 @@ public class ButlerService extends Service {
 
         Log.d(TAG, "ButlerService shutting down...");
 
-        // Release all the locks we were holding
-        wakeLock.release();
-        keyguardLock.reenableKeyguard();
-        wifiLock.release();
-
-        // Re-enable animations on the emulator
-        animationDisabler.enableAnimations();
-
-        // Reset location services state to whatever it originally was
-        locationServicesChanger.restoreLocationServicesState(getContentResolver());
-
-        // Reset rotation from the accelerometer to whatever it originally was
-        rotationChanger.restoreRotationState(getContentResolver());
-
         // Uninstall our IActivityController to resume normal Activity behavior
         NoDialogActivityController.uninstall();
 
-        // Reset the spell checker to the original state
-        spellCheckerDisabler.restoreSpellCheckerState(getContentResolver());
+        // Turn the accessibility service off it we enabled it
+        try {
+            accessibilityServiceEnabler.setAccessibilityServiceEnabled(false);
+        } catch (RemoteException ignored) { }
 
-        // Restore the original keyboard setting
-        showImeWithHardKeyboardHelper.restoreShowImeState(getContentResolver());
-
-        // Restore immersive mode confirmation
-        immersiveModeDialogDisabler.restoreOriginalState();
+        butlerApi.onDestroy();
+        locks.release();
     }
 
     @Nullable

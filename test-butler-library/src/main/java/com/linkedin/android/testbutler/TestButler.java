@@ -30,8 +30,8 @@ import android.os.Bundle;
 import android.os.IBinder;
 import android.os.RemoteException;
 import android.provider.Settings;
-import android.support.annotation.IntDef;
-import android.support.annotation.NonNull;
+import androidx.annotation.IntDef;
+import androidx.annotation.NonNull;
 import android.util.Log;
 import android.view.Surface;
 
@@ -108,10 +108,9 @@ public class TestButler {
         intent.setComponent(new ComponentName("com.linkedin.android.testbutler",
                 "com.linkedin.android.testbutler.ButlerService"));
 
-        context.startService(intent);
         context.bindService(intent, serviceConnection, Context.BIND_AUTO_CREATE);
         try {
-            if (!serviceStarted.await(5, TimeUnit.SECONDS)) {
+            if (!serviceStarted.await(15, TimeUnit.SECONDS)) {
                 Log.e(TAG, "Failed to start TestButler; Did you remember to install it before running your tests?\n" +
                         "Running tests without ButlerService, failures or unexpected behavior may occur!!!");
             }
@@ -137,7 +136,6 @@ public class TestButler {
                 "com.linkedin.android.testbutler.ButlerService"));
 
         context.unbindService(serviceConnection);
-        context.stopService(intent);
         serviceStarted = new CountDownLatch(1);
     }
 
@@ -318,6 +316,38 @@ public class TestButler {
             }
         } catch (RemoteException e) {
             throw new IllegalStateException("Failed to communicate with ButlerService", e);
+        }
+    }
+
+    /**
+     * Enable or disable always finish activities setting on the emulator
+     *
+     * @param enabled What state the always finish activities setting should be set to
+     */
+    public static void setAlwaysFinishActivities(boolean enabled) {
+        verifyApiReady();
+        try {
+            if (!butlerApi.setAlwaysFinishActivitiesState(enabled)) {
+                throw new IllegalStateException("Failed to set always finish activities!");
+            }
+        } catch (RemoteException e) {
+            throw new IllegalStateException("Failed to communicate with ButlerService", e);
+        }
+    }
+
+    /**
+     * Enable TestButler's dummy accessibility service.
+     *
+     * @param enabled True to enable the accessibility service, false to disable it.
+     */
+    public static void setAccessibilityServiceState(boolean enabled) {
+        verifyApiReady();
+        try {
+            if (!butlerApi.setAccessibilityServiceState(enabled)) {
+                throw new IllegalStateException("Failed to set accessibility service state!");
+            }
+        } catch (RemoteException e) {
+            throw new IllegalStateException("Failed to set accessibility service state!");
         }
     }
 
